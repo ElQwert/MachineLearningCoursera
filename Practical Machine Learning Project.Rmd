@@ -1,0 +1,142 @@
+---
+title: "Practical Machine Learning - Course project"
+date: "2015-09-27"
+author: "Andrey Gavrilenko"
+output:
+  html_document:
+    theme: cerulean
+---
+
+<!-- For more info on RMarkdown see http://rmarkdown.rstudio.com/ -->
+
+<!-- Enter the code required to load your data in the space below. The data will be loaded but the line of code won't show up in your write up (echo=FALSE) in order to save space-->
+```{r echo=FALSE}
+
+```
+
+<!-- In the remainder of the document, add R code chunks as needed -->
+
+### Introduction:
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+We have six test subjects which were asked to do barbell lifts correctly and incorrectly in 5 different ways while wearing accelerometers on the belt, forearms, arms and the dumbells. The data from accelerometers was recorded. The purpose of this course project is to build machine learning model to predict the manner in which they did the the exercise. To do it we I will use "classe" as an outcome variable and any other variables form the data. We have two data sets which come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+Data sets:
+
+(1) The training data for this project are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+(2) The test data are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+### Data:
+
+First of all I need to load all used packages. To fit the model I will use Caret and randomForest packages.
+
+```{r echo=FALSE, warning=FALSE, results='markup'}
+library(caret)
+library(randomForest)
+```
+
+Next step would be load and read data:
+
+```{r echo=FALSE, warning=FALSE, results='markup'}
+if (!file.exists("./data/pml-training.csv")) {
+    download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+        destfile = "./data/pml-training.csv")
+}
+if (!file.exists("./data/pml-testing.csv")) {
+    download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+        destfile = "./data/pml-testing.csv")
+}
+training <- read.csv("./data/pml-training.csv", na.strings=c("NA",""), header=TRUE)
+colnames_train <- colnames(training)
+testing <- read.csv("./data/pml-testing.csv", na.strings=c("NA",""), header=TRUE)
+colnames_test <- colnames(testing)
+```
+
+Before start to fit our model I need to clean and prepare data. First of all I wiil define and remove NA's:
+
+```{r echo=FALSE, warning=FALSE, results='markup'}
+nonNAs <- function(x) {
+        as.vector(apply(x, 2, function(x) length(which(!is.na(x)))))
+}
+
+colcnts <- nonNAs(training)
+drops <- c()
+for (cnt in 1:length(colcnts)) {
+        if (colcnts[cnt] < nrow(training)) {
+                drops <- c(drops, colnames_train[cnt])
+        }
+}
+
+training <- training[,!(names(training) %in% drops)]
+testing <- testing[,!(names(testing) %in% drops)]
+```
+
+I will remove the first 7 columns in the data set, because they are useles, they are static and don't impact to the outcome.
+
+```{r echo=FALSE, warning=FALSE, results='markup'}
+training <- training[,8:length(colnames(training))]
+testing <- testing[,8:length(colnames(testing))]
+```
+
+Here is the list of remaining columns:
+
+```{r echo=FALSE, warning=FALSE, results='markup'}
+colnames(training)
+```
+
+There are total 53 columns that would be useful for predictions.
+
+### Build Classification Model
+
+So lets start build the model.
+
+Create data partition to divide sourse training set to the Train and the Cross validation sets:
+```{r echo=FALSE, warning=FALSE, results='markup'}
+set.seed(4964)
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=F)
+
+train.set <- training[inTrain,]
+cv.set <- training[-inTrain,]
+
+```
+
+Some of the variables could have high correlation between each other. Lets apply Principal component analysis to find these variables. It will reduce number of predictors used in model:
+```{r}
+pca <- preProcess(train.set[, -53], method="pca", thresh=.99)
+train.pca <- predict(pca, train.set[, -53])
+cv.pca <- predict(pca, cv.set[-53])
+predict.num <- ncol(train.pca)
+```
+
+Finally, after applying PCA we have only **`r predict.num`** predictors.
+
+Now lets fit the model. To do it I will use Random Forest algorithm:
+```{r echo=FALSE, warning=FALSE, results='markup'}
+fitModel = randomForest(train.set$classe~., data=train.pca, ntree = 2048)
+fitModel
+
+```
+
+Lets check model accuracy on the cross validation data set:
+```{r echo=FALSE, warning=FALSE, results='markup'}
+confusionMatrix(cv.set$classe, predict(fitModel, cv.pca))
+```
+
+
+### Results
+
+At the end I have got model with the Accuracy **0.9811**. This is quite good results and now lets use built model over testing results:
+
+```{r results='hide'}
+testing.tmp <- testing[, names(testing) %in% names(training)]
+testing.pca <- predict(pca, testing.tmp)
+testing.results <- predict(fitModel, testing.pca)
+testing.results
+```
+
+My results were successfully submitted to the Course project.
+
+
